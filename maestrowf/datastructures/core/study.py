@@ -358,11 +358,8 @@ class Study(DAG):
             # Otherwise, we have a valid key.
             # We need to collect used parameters for two things:
             # 1. Collect the used parameters for the current step.
-            # 2. Get the used parameters for the parent step.
-            # The logic here is that the used parameters are going to be the
-            # union of the used parameters for this step and ALL parent steps.
-            # If we keep including the step's parent parameters, we will simply
-            # carry parent parameters recursively.
+            # 2. Collect the union of parent and step Parameters
+            # 3. Workspaces used by the step.
             step_params = self.parameters.get_used_parameters(node)
             if parent != SOURCE:
                 step_params |= used_params[parent]
@@ -376,18 +373,11 @@ class Study(DAG):
             logger.info("Parameters used: %s", used_params[step.name])
             logger.info("Workspaces used: %s", used_spaces[step.name])
 
-        # Secondly, we need to iterate over the steps in the workflow again.
-        # We should check a few conditions:
-        for parent, step, node in self.walk_study():
-            # If the step is _SOURCE, add to the DAG and continue.
-            if step == SOURCE:
-                logger.debug("Source node found.")
-                dag.add_node(SOURCE, None)
-                continue
+        for combo in self.parameters:
+            for parent, step, node in self.walk_study():
+                pass
+                # If the step itself uses parameters,
 
-            # Check if the step itself uses parameters
-
-            # 2. If the step has parameters, parameterize it.
 
         return global_workspace, dag
 
