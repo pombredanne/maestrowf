@@ -360,10 +360,12 @@ class Study(DAG):
             # 1. Collect the used parameters for the current step.
             # 2. Collect the union of parent and step Parameters
             # 3. Workspaces used by the step.
-            step_params = self.parameters.get_used_parameters(node)
+            name = step.name
+
+            step_params[name] = self.parameters.get_used_parameters(node)
             if parent != SOURCE:
-                step_params |= used_params[parent]
-            used_params[step] = step_params
+                used_params[name] = used_params[parent] | step_params[name]
+
             # Also collect the workspaces used by the step using the variable
             # format $(step.workspace).
             used_spaces[step.name] = \
