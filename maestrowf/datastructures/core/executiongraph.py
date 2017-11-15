@@ -288,6 +288,18 @@ class ExecutionGraph(DAG):
         self._description["name"] = name
         self._description["description"] = description
 
+    def get_workspace(self, step_name):
+        """
+        Find the workspace for the specified step name.
+
+        :param step_name: Name of the step to be found.
+        :returns: The path to the specified step's workspace.
+        """
+        if step_name in self.values:
+            return self.values[step_name].workspace
+        else:
+            return None
+
     @classmethod
     def unpickle(cls, path):
         """
