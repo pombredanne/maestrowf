@@ -29,6 +29,7 @@
 
 """Class related to the construction of study campaigns."""
 
+from collections import defaultdict
 import copy
 import logging
 import os
@@ -154,7 +155,6 @@ class Study(DAG):
             to just construct a new environment, with no way to manage
             injecting the new set into an existing workspace.
     """
-
     def __init__(self, name, description,
                  studyenv=None, parameters=None, steps=None):
         """
@@ -335,51 +335,68 @@ class Study(DAG):
         dag.add_description(**self.description)
         # Items to store that should be reset.
         global_workspace = self.output.value  # Highest ouput dir
+        parents = defaultdict(list)           # Parent step for each step.
+        workspaces = defaultdict(dict)        # Workspace mapping
+        params_used = {}                      # Parameters used by the step
+        total_params = defaultdict(set)       # Total params used by subtree
 
-        # Rework begins here:
-        # First step, we need to map each workflow step to the parameters that
-        # they actually use -- and only the parameters used. This setup will
-        # make it so that workflows can be constructed with implicit stages.
-        # That's to say that if a step only requires a subset of parameters,
-        # we only need to run the set of combinations dictated by that subset.
-        used_params = {}    # The total set of params a step uses (with parent)
-        step_params = {}    # The set of params each step locally uses
-        used_spaces = {}    # The workspaces each step uses.
-        workspaces = {}     # Workspace each step will use.
+        # Get the topological sort for the study.
+        t_sorted = self.topological_sort()
 
-        for parent, step, node in self.walk_study():
-            # Source doesn't matter -- ignore it.
-            if step == SOURCE:
+        for step in t_sorted:
+            logger.info("==================================================\n",
+                        "Set up for step '%s'", step.name,
+                        "==================================================\n")
+
+            # Treat SOURCE differently
+            # If we see the source, just add it to the DAG. Also set its
+            # children's parent to SOURCE and its workspace.
+            if step is SOURCE:
+                for e in self.values[SOURCE]:
+                    parents[e].append(SOURCE)
+                dag.add_node(SOURCE)
+                logger.debug(
+                    "SOURCE encounted. Added to ExecutionGraph and setting"
+                    " parents for %s", self.values[SOURCE])
                 continue
 
-            logger.info("==================================================\n",
-                        "Information for step '%s'", step.name,
-                        "==================================================\n")
-            # Otherwise, we have a valid key.
-            # We need to collect used parameters for two things:
-            # 1. Collect the used parameters for the current step.
-            # 2. Collect the union of parent and step Parameters
-            # 3. Workspaces used by the step.
-            name = step.name
+            # Need to collect step information
+            # 1. Grab the actual node
+            node = self.values[step]
+            # 2. Determine the parameters this step uses.
+            params_used[step] = self.parameters.get_used_parameters(node)
+            # 3. Collect all the parameters parents use
+            for p in parents[step]:
+                total_params[step] |= total_params[p]
+            # 4. Unique parameters used by this step
+            unique_params = params_used[step] - total_params[step]
+            workspaces = set(re.findall(WSREGEX, cmd))
 
-            step_params[name] = self.parameters.get_used_parameters(node)
-            if parent != SOURCE:
-                used_params[name] = used_params[parent] | step_params[name]
+            # If we encounter this case then we know that the step is singular
+            # because it isn't based on parameters nor is it based on previous
+            # workspaces. Go ahead and set the workspace the same as the global
+            # workspace.
+            if not workspaces and not unique_params:
+                # The workspace is constant and the step is singular.
+                for combo in self.parameters:
+                    combo_str = combo.get_param_string()
+                    workspaces[step][combo_str] = (step, global_workspace)
 
-            # Also collect the workspaces used by the step using the variable
-            # format $(step.workspace).
-            used_spaces[step.name] = \
-                set(re.findall(WSREGEX, step.run["cmd"]))
+                # This step is dependent on all parameterizations of the its
+                # parent steps. So for all parents, add the parameterized steps
+                # into the set
+                dependencies = set()
+                for parent in parents[step]:
+                    for parent_step in workspaces[parent].items():
+                        dependencies.add(parent_step)
 
-            # Log the information.
-            logger.info("Parameters used: %s", used_params[step.name])
-            logger.info("Workspaces used: %s", used_spaces[step.name])
+                # Add the node to the ExecutionGraph and then add dependencies.
+                dag.add_node(node)
+                for d in dependencies:
+                    dag.add_edge(d, step)
 
-        for combo in self.parameters:
-            for parent, step, node in self.walk_study():
-                pass
-                # If the step itself uses parameters,
-
+                # We now can continue to the next node.
+                continue
 
         return global_workspace, dag
 
