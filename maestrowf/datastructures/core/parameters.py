@@ -116,14 +116,18 @@ class Combination(object):
         """
         return ".".join(self._labels.values())
 
-    def get_param_string(self, params):
+    def get_param_string(self, params=None):
         """
         Get the combination string for the specified parameters.
 
-        :param params: A set of parameters to be used in the string.
+        :param params: A set of parameters (default=None).
         :returns: A string containing the labels for the parameters in params.
         """
         combo_str = []
+        # If params is None, assume all.
+        if not params:
+            params = sorted(set(self._names.items))
+
         for item in sorted(params):
             var = "{}({}.label)".format(self._token, item)
             combo_str.append(self._labels[var])
