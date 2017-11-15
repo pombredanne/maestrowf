@@ -370,7 +370,7 @@ class Study(DAG):
                 total_params[step] |= total_params[p]
             # 4. Unique parameters used by this step
             unique_params = params_used[step] - total_params[step]
-            workspaces = set(re.findall(WSREGEX, cmd))
+            workspaces = set(re.findall(WSREGEX, node.run["cmd"]))
 
             # If we encounter this case then we know that the step is singular
             # because it isn't based on parameters nor is it based on previous
