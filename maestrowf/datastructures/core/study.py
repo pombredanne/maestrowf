@@ -460,7 +460,7 @@ class Study(DAG):
 
                 # Add the new nodes to the DAG.
                 for new_node in new_steps:
-                    _ = deepcopy(node)
+                    _ = copy.deepcopy(node)
                     _.run["cmd"] = new_node[1]
                     dag.add_step(new_node[0], _, new_node[2], rlimit)
 
