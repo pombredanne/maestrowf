@@ -354,7 +354,7 @@ class Study(DAG):
             if step is SOURCE:
                 for e in self.values[SOURCE]:
                     parents[e].append(SOURCE)
-                dag.add_node(SOURCE)
+                dag.add_node(SOURCE, None)
                 logger.debug(
                     "SOURCE encounted. Added to ExecutionGraph and setting"
                     " parents for %s", self.values[SOURCE])
@@ -363,6 +363,13 @@ class Study(DAG):
             # Need to collect step information
             # 1. Grab the actual node
             node = self.values[step]
+            # Account for node specific settings.
+            # Restart limits
+            if node.run["restart"]:
+                rlimit = self._restart_limit
+            else:
+                rlimit = 0
+
             # 2. Determine the parameters this step uses.
             params_used[step] = self.parameters.get_used_parameters(node)
             # 3. Collect all the parameters parents use
@@ -370,13 +377,13 @@ class Study(DAG):
                 total_params[step] |= total_params[p]
             # 4. Unique parameters used by this step
             unique_params = params_used[step] - total_params[step]
-            workspaces = set(re.findall(WSREGEX, node.run["cmd"]))
+            space_matches = set(re.findall(WSREGEX, node.run["cmd"]))
 
             # If we encounter this case then we know that the step is singular
             # because it isn't based on parameters nor is it based on previous
             # workspaces. Go ahead and set the workspace the same as the global
             # workspace.
-            if not workspaces and not unique_params:
+            if not space_matches and not unique_params:
                 # The workspace is constant and the step is singular.
                 for combo in self.parameters:
                     combo_str = combo.get_param_string()
@@ -397,6 +404,70 @@ class Study(DAG):
 
                 # We now can continue to the next node.
                 continue
+
+            # If we encounter workspaces being used and
+            if space_matches and not unique_params:
+                # We need to make sure to substitute the same set of parameters
+                # for each workspace at the same time.
+                new_steps = set()
+                new_parents = set()
+                for combo in self.parameters:
+                    # For each combo, look up in the workspaces table for each
+                    # step name match.
+                    combo_str = combo.get_param_string()
+
+                    # If the combination is not in the workspaces matrix,
+                    # we have a problem.
+                    if combo_str not in workspaces:
+                        msg = "Attempted to refer to a combination that has" \
+                              " not been previously added to the workspaces " \
+                              "matrix. (Combination - {})".format(combo_str)
+                        logger.error(msg)
+                        raise ValueError(msg)
+
+                    cmd = node.run["cmd"]
+                    for match in space_matches:
+                        # Replace the workspace tag in the command.
+                        workspace_var = "$({}.workspace)".format(match)
+                        logger.debug("Replacing token %s -- %s",
+                                     workspace_var,
+                                     workspaces[combo_str][match])
+
+                        cmd = cmd.raplace(workspace_var,
+                                          workspaces[combo_str][match])
+
+                    # Once we finish with the substitutions, we need to name
+                    # the step based on the USED parameters and set its
+                    # workspace.
+                    step_name = "{}_{}".format(
+                        step, combo.get_param_string(params_used[step.name]))
+                    # Find the most common prefix of the parent workspaces
+                    # NOTE: This may not be the best way to handle structuring
+                    # workspaces. May have to revisit.
+                    step_ws = os.path.commonprefix(
+                        [
+                            workspaces[parent][combo_str][1]
+                            for parent in parents[step]
+                        ]
+                    )
+                    # Document the workspace and add it to the set to be added.
+                    workspaces[step][combo_str] = (step_name, step_ws)
+                    new_steps.add((step_name, cmd, step_ws))
+                    for parent in parents[step]:
+                        new_parents.add(
+                            (step_name, workspaces[step][combo_str][0])
+                        )
+
+                # Add the new nodes to the DAG.
+                for new_node in new_steps:
+                    _ = deepcopy(node)
+                    _.run["cmd"] = new_node[1]
+                    dag.add_step(new_node[0], _, new_node[2], rlimit)
+
+                # Add dependencies to the DAG
+                for dependency in new_parents:
+                    dag.add_edge(dependency[1], dependency[0])
+
 
         return global_workspace, dag
 
