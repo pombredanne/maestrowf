@@ -468,6 +468,9 @@ class Study(DAG):
                 for dependency in new_parents:
                     dag.add_edge(dependency[1], dependency[0])
 
+                # Continue onto the next node in the topological list.
+                continue
+
 
         return global_workspace, dag
 
