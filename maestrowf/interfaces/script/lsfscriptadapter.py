@@ -30,6 +30,7 @@
 """LSF Scheduler interface implementation."""
 import getpass
 import logging
+from math import ceil
 import os
 import re
 from subprocess import PIPE, Popen
@@ -107,12 +108,18 @@ class LSFScriptAdapter(SchedulerScriptAdapter):
         batch_header["error"] = "{}.%J.err".format(batch_header["job-name"])
 
         # LSF requires an hour and minutes format. We need to attempt to split
-        # and correct if we get something that's coming in as DD:HH:MM
+        # and correct if we get something that's coming in as HH:MM:SS
         walltime = run.pop("walltime")
         wt_split = walltime.split(":")
         if len(wt_split) == 3:
-            days_to_hours = (24 * int(wt_split[0])) + int(wt_split[1])
-            walltime = "{}:{}".format(days_to_hours, wt_split[2])
+            # If wall time is specified in three parts, we'll just calculate
+            # the minutes off of the seconds and then shift up to hours if
+            # needed.
+            seconds_minutes = ceil(float(wt_split[2])/60)
+            total_minutes = int(wt_split[1]) + seconds_minutes
+            hours = int(wt_split[0]) + int(total_minutes/60)
+            total_minutes %= 60
+            walltime = "{}:{}".format(hours, total_minutes)
 
         batch_header["walltime"] = walltime
 
