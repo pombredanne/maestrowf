@@ -119,7 +119,7 @@ class LSFScriptAdapter(SchedulerScriptAdapter):
             total_minutes = int(wt_split[1]) + seconds_minutes
             hours = int(wt_split[0]) + int(total_minutes/60)
             total_minutes %= 60
-            walltime = "{}:{}".format(hours, total_minutes)
+            walltime = "{}:{}".format(hours, int(total_minutes))
 
         batch_header["walltime"] = walltime
 
