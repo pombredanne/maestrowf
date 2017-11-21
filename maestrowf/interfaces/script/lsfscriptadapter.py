@@ -216,17 +216,16 @@ class LSFScriptAdapter(SchedulerScriptAdapter):
                 # The squeue command output is split with the following indices
                 # used for specific information:
                 # 0 - Job Identifier
-                # 1 - Queue
-                # 2 - Job name
-                # 3 - User
-                # 4 - State [Passed to _state]
-                # 5 - Current Execution Time
-                # 6 - Assigned Node Count
-                # 7 - Hostname and assigned node identifier list
+                # 1 - User the job belongs to
+                # 2 - Status of the job
+                # 3 - Submission queue
+                # 4 - Host where execution was set for
+                # 5 - Job name
+                # 6 - Time of submission
                 job_split = re.split("\s+", job)
-                state_index = 4
+                state_index = 2
                 jobid_index = 0
-                if job_split[0] == "":
+                while job_split[0] == "":
                     LOGGER.debug("Removing blank entry from head of status.")
                     job_split = job_split[1:]
 
@@ -272,6 +271,10 @@ class LSFScriptAdapter(SchedulerScriptAdapter):
             return State.FINISHED
         elif lsf_state == "EXIT":
             return State.FAILED
+        elif lsf_state == "WAIT" or lsf_state == "PROV":
+            return State.WAITING
+        elif lsf_state == "UNKWN":
+            return State.UNKNOWN
         else:
             return State.UNKNOWN
 
