@@ -251,34 +251,33 @@ class LSFScriptAdapter(SchedulerScriptAdapter):
                          "encountered.")
             return JobStatusCode.ERROR, status
 
-    def _state(self, slurm_state):
+    def _state(self, lsf_state):
         """
         Map a scheduler specific job state to a Study.State enum.
 
         :param slurm_state: String representation of scheduler job status.
         :returns: A Study.State enum corresponding to parameter job_state.
         """
-        LOGGER.debug("Received LSF State -- %s", slurm_state)
-        if slurm_state == "RUN":
+        # NOTE: fdinatale -- If I'm understanding this correctly, there are
+        # four naturally occurring states (excluding states of suspension.)
+        # This is somewhat problematic because we don't actually get a time out
+        # status here. We probably need to start considering what to do with
+        # the post and pre monikers in steps.
+        LOGGER.debug("Received LSF State -- %s", lsf_state)
+        if lsf_state == "RUN":
             return State.RUNNING
-        elif slurm_state == "PEND":
+        elif lsf_state == "PEND":
             return State.PENDING
-        elif slurm_state == "CG":
-            return State.FINISHING
-        elif slurm_state == "CD":
+        elif lsf_state == "DONE":
             return State.FINISHED
-        elif slurm_state == "NF":
-            return State.HWFAILURE
-        elif slurm_state == "TO":
-            return State.TIMEDOUT
-        elif slurm_state == "ST" or slurm_state == "CA" or slurm_state == "F":
+        elif lsf_state == "EXIT":
             return State.FAILED
         else:
             return State.UNKNOWN
 
     def _write_script(self, ws_path, step):
         """
-        Write a Slurm script to the workspace of a workflow step.
+        Write a LSF script to the workspace of a workflow step.
 
         The job_map optional parameter is a map of workflow step names to job
         identifiers. This parameter so far is only planned to be used when a
