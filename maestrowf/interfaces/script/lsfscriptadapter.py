@@ -70,6 +70,7 @@ class LSFScriptAdapter(SchedulerScriptAdapter):
         self.add_batch_parameter("bank", kwargs.pop("bank"))
         self.add_batch_parameter("queue", kwargs.pop("queue"))
         self.add_batch_parameter("tasks", kwargs.pop("tasks", "1"))
+        self.add_batch_parameter("ptile", kwargs.pop("ptile", "1"))
 
         # Static Header Elements
         self.add_batch_parameter("parallel", "poe")
@@ -83,12 +84,13 @@ class LSFScriptAdapter(SchedulerScriptAdapter):
             "walltime": "#BSUB -W {walltime}",
             "job-name": "#BSUB -J {job-name}",
             "output": "#BSUB -o {output}",
-            "error": "#BSUB -e {error}"
+            "error": "#BSUB -e {error}",
+            "ptile": "#BSUB -R \"span[ptile={ptile}]\"",
         }
 
         self._cmd_flags = {
             "cmd": "jsrun",
-            "ntasks": "-p",
+            "ntasks": "-np",
             "nodes": "--rs_per_host 1 --nrs",
         }
 
@@ -165,7 +167,7 @@ class LSFScriptAdapter(SchedulerScriptAdapter):
         :returns: The return status of the submission command and job
         identiifer.
         """
-        cmd = " ".join(["bsub", path, "-cwd", cwd])
+        cmd = " ".join(["bsub", "-cwd", cwd, "<", path])
         LOGGER.debug("cwd = %s", cwd)
         LOGGER.debug("Command to execute: %s", cmd)
         p = Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE, cwd=cwd, env=env)
@@ -198,7 +200,7 @@ class LSFScriptAdapter(SchedulerScriptAdapter):
         # squeue options:
         # -u = username to search queues for.
         # -t = list of job states to search for. 'all' for all states.
-        cmd = "squeue -u $USER -t all"
+        cmd = "bjobs -u $USER -q {}".format(self._batch["queue"])
         p = Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE)
         output, err = p.communicate()
         retcode = p.wait()
@@ -256,10 +258,10 @@ class LSFScriptAdapter(SchedulerScriptAdapter):
         :param slurm_state: String representation of scheduler job status.
         :returns: A Study.State enum corresponding to parameter job_state.
         """
-        LOGGER.debug("Received SLURM State -- %s", slurm_state)
-        if slurm_state == "R":
+        LOGGER.debug("Received LSF State -- %s", slurm_state)
+        if slurm_state == "RUN":
             return State.RUNNING
-        elif slurm_state == "PD":
+        elif slurm_state == "PEND":
             return State.PENDING
         elif slurm_state == "CG":
             return State.FINISHING
@@ -292,7 +294,7 @@ class LSFScriptAdapter(SchedulerScriptAdapter):
         """
         to_be_scheduled, cmd, restart = self.get_scheduler_command(step)
 
-        fname = "{}.slurm.sh".format(step.name)
+        fname = "{}.lsf.cmd".format(step.name)
         script_path = os.path.join(ws_path, fname)
         with open(script_path, "w") as script:
             if to_be_scheduled:
@@ -304,7 +306,7 @@ class LSFScriptAdapter(SchedulerScriptAdapter):
             script.write(cmd)
 
         if restart:
-            rname = "{}.restart.slurm.sh".format(step.name)
+            rname = "{}.restart.lsf.cmd".format(step.name)
             restart_path = os.path.join(ws_path, rname)
 
             with open(restart_path, "w") as script:
