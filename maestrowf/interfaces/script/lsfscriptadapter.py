@@ -58,7 +58,7 @@ class LSFScriptAdapter(SchedulerScriptAdapter):
         - host: The cluster to execute scripts on.
         - bank: The account to charge computing time to.
         - queue: Scheduler queue scripts should be submitted to.
-        - nodes: The number of compute nodes to be reserved for computing.
+        - tasks: The number of compute nodes to be reserved for computing.
 
         :param **kwargs: A dictionary with default settings for the adapter.
         """
